@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "id": "signoz",
   "name": "SigNoz",
-  "version": "0.1.0",
-  "description": "Self-hosted observability for this workspace — traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
+  "version": "0.2.0",
+  "description": "Self-hosted observability for this workspace \u2014 traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
   "icon": "activity",
   "tier": "container",
   "category": "Dev Tools",
@@ -66,7 +66,7 @@
             "source": "$AW_APP_DATA/clickhouse",
             "target": "/var/lib/clickhouse",
             "mode": "rw",
-            "reason": "All ingested traces/metrics/logs. This IS the app's data — without this volume surviving a container recreation (an update, a workspace redeploy), every restart starts from empty telemetry history."
+            "reason": "All ingested traces/metrics/logs. This IS the app's data \u2014 without this volume surviving a container recreation (an update, a workspace redeploy), every restart starts from empty telemetry history."
           },
           {
             "source": "container/clickhouse/cluster.xml",
@@ -100,7 +100,7 @@
             "source": "$AW_APP_DATA/signoz-sqlite",
             "target": "/var/lib/signoz",
             "mode": "rw",
-            "reason": "SigNoz's own SQLite store — dashboards, alerts, saved views, and the admin account created via its first-run signup screen. Without this volume, a container recreation loses every dashboard and the admin account has to be recreated."
+            "reason": "SigNoz's own SQLite store \u2014 dashboards, alerts, saved views, and the admin account created via its first-run signup screen. Without this volume, a container recreation loses every dashboard and the admin account has to be recreated."
           }
         ]
       },
@@ -140,7 +140,7 @@
       {
         "id": "aw-signoz",
         "path": "skills/aw-signoz/SKILL.md",
-        "description": "Use this workspace's own SigNoz — the OTLP endpoint format, auth, and what's mounted where."
+        "description": "Use this workspace's own SigNoz \u2014 the OTLP endpoint format, auth, and what's mounted where."
       }
     ]
   },
@@ -151,7 +151,7 @@
         "type": "string",
         "default": "change-me-please-rotate-this-secret",
         "title": "Session signing secret",
-        "description": "Signs SigNoz's own login sessions. Ships with a default — rotate it here before relying on this instance for anything sensitive; changing it invalidates existing SigNoz sessions."
+        "description": "Signs SigNoz's own login sessions. Ships with a default \u2014 rotate it here before relying on this instance for anything sensitive; changing it invalidates existing SigNoz sessions."
       }
     },
     "required": []
