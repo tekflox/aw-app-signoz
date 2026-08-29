@@ -112,6 +112,7 @@
           "mem_mb": 1024
         },
         "env": {
+          "SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN": "tcp://aw-app-signoz-clickhouse:9000",
           "SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER": "cluster",
           "SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION": "true",
           "SIGNOZ_OTEL_COLLECTOR_TIMEOUT": "10m"
