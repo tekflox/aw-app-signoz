@@ -34,4 +34,15 @@
     <distributed_ddl>
         <path>/clickhouse/task_queue/ddl</path>
     </distributed_ddl>
+    <!--
+      SigNoz's ReplicatedMergeTree table paths (e.g.
+      /clickhouse/tables/{uuid}/{shard}) reference these macros — confirmed
+      live: without them ClickHouse rejects every CREATE TABLE with "No
+      macro 'shard' in config". One shard, one replica, since this is a
+      single-node-per-workspace deployment, not a multi-node cluster.
+    -->
+    <macros>
+        <shard>01</shard>
+        <replica>01</replica>
+    </macros>
 </clickhouse>
