@@ -12,7 +12,7 @@
   "resource_estimate": {
     "cpu": "high",
     "memory": "~6 GB",
-    "disk": "~5 GB (grows with retained telemetry)"
+    "disk": "~5 GB"
   },
   "runtime": {
     "image": "nginx:alpine",

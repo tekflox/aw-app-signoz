@@ -14,7 +14,8 @@ gets its own isolated instance; nothing is shared with other tenants.
   hostname.
 - Keeps everything it ingests in a ClickHouse database that survives a
   container recreation (an app update, a workspace redeploy) — telemetry
-  history isn't lost when the app restarts.
+  history isn't lost when the app restarts. Disk usage grows with how much
+  telemetry you retain; the ~5 GB estimate is a starting point, not a cap.
 
 ## Why Use It
 
