@@ -1,23 +1,26 @@
-name: Build otelcol image
+name: Build custom images
 
-# Builds this app's ONE custom image — a thin migrate-then-serve wrapper
-# around signoz/signoz-otel-collector (see container/otelcol/) — and pushes
-# it to ghcr.io/<owner>/aw-app-signoz-otelcol. Every other container this app
-# runs (nginx, clickhouse, zookeeper, the signoz backend) is an unmodified
-# upstream image referenced directly in aw-app.json — nothing to build for
-# those.
+# Builds this app's custom images — thin wrappers around upstream SigNoz
+# components that need a startup step the Tier-2 sidecar manifest has no
+# command/entrypoint override for (see each Dockerfile's own comment):
+#   - container/otelcol/    -> migrate-then-serve
+#   - container/clickhouse/ -> apply configurable retention TTL, then serve
+# Every OTHER container this app runs (nginx, zookeeper, the signoz backend)
+# is an unmodified upstream image referenced directly in aw-app.json —
+# nothing to build for those.
 #
 # Push builds run only for release bump commits so `latest` follows the
 # tagged manifest release. Manual rebuilds remain available via
 # workflow_dispatch.
 #
-#   gh workflow run build.yml                        # amd64
+#   gh workflow run build.yml                        # amd64, both images
 #   gh workflow run build.yml -f include_arm64=true  # + linux/arm64 (QEMU)
 #
-# One-time manual step after the FIRST push: the package is created private
-# regardless of this repo's own visibility — see aw-app-browser's build.yml
-# for the same note and the fix (org admin flips visibility to Public in the
-# GitHub package settings UI; no API endpoint exists for this).
+# One-time manual step after the FIRST push of EACH image: the package is
+# created private regardless of this repo's own visibility — see
+# aw-app-browser's build.yml for the same note and the fix (org admin flips
+# visibility to Public in the GitHub package settings UI; no API endpoint
+# exists for this).
 on:
   push:
     branches: [master]
@@ -29,7 +32,7 @@ on:
         default: false
 
 concurrency:
-  group: build-aw-app-signoz-otelcol-${{ github.ref }}
+  group: build-aw-app-signoz-images-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -39,7 +42,14 @@ permissions:
 jobs:
   build:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[skip release]')) }}
-    name: aw-app-signoz-otelcol
+    strategy:
+      matrix:
+        image:
+          - name: aw-app-signoz-otelcol
+            context: container/otelcol
+          - name: aw-app-signoz-clickhouse
+            context: container/clickhouse
+    name: ${{ matrix.image.name }}
     runs-on: [self-hosted, aw-baremetal]
     timeout-minutes: 60
     steps:
@@ -83,25 +93,25 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: container/otelcol
-          file: container/otelcol/Dockerfile
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/Dockerfile
           platforms: ${{ steps.plat.outputs.platforms }}
           push: true
           tags: |
-            ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:latest
-            ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:v${{ steps.version.outputs.version }}
-            ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:buildcache,mode=max
+            ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:latest
+            ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:v${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:buildcache,mode=max
 
       - name: Summary
         run: |
           {
-            echo "## Docker aw-app-signoz-otelcol pushed"
+            echo "## Docker ${{ matrix.image.name }} pushed"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| **Image** | \`ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:latest\` |"
-            echo "| **Version tag** | \`ghcr.io/${{ steps.owner.outputs.lc }}/aw-app-signoz-otelcol:v${{ steps.version.outputs.version }}\` |"
+            echo "| **Image** | \`ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:latest\` |"
+            echo "| **Version tag** | \`ghcr.io/${{ steps.owner.outputs.lc }}/${{ matrix.image.name }}:v${{ steps.version.outputs.version }}\` |"
             echo "| **Platforms** | ${{ steps.plat.outputs.platforms }} |"
           } >> "$GITHUB_STEP_SUMMARY"

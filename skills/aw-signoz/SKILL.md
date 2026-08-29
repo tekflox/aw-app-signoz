@@ -51,13 +51,27 @@ how "not hardcoded" gets satisfied here — nobody ships a default password.
 | `aw-app-signoz` (main) | `nginx:alpine` | The only externally-reachable port. Path-routes OTLP paths to `otelcol`, everything else to `backend`. |
 | `aw-app-signoz-backend` | `signoz/signoz:v0.128.0` | SigNoz's own web UI + query API. SQLite state (dashboards, alerts, the admin account) lives in `$AW_APP_DATA/signoz-sqlite`. |
 | `aw-app-signoz-otelcol` | `ghcr.io/tekflox/aw-app-signoz-otelcol` (this repo's own thin wrapper, see `container/otelcol/`) | Accepts OTLP, writes to ClickHouse. The wrapper's `entrypoint.sh` runs ClickHouse schema migrations before serving — the Tier-2 sidecar manifest has no `command` override, so this had to move into the image. |
-| `aw-app-signoz-clickhouse` | `clickhouse/clickhouse-server:25.5.6` | All ingested telemetry. `$AW_APP_DATA/clickhouse` is the durable volume — this is the data that matters most to not lose. |
+| `aw-app-signoz-clickhouse` | `ghcr.io/tekflox/aw-app-signoz-clickhouse` (this repo's own thin wrapper, see `container/clickhouse/`) | All ingested telemetry. `$AW_APP_DATA/clickhouse` is the durable volume — this is the data that matters most to not lose. The wrapper's `entrypoint.sh` applies the configurable retention TTL (below) on every start. |
 | `aw-app-signoz-zookeeper` | `signoz/zookeeper:3.7.1` | ClickHouse's replicated-table-engine coordination store (used even for one node — SigNoz's schema always uses `ReplicatedMergeTree`). |
 
 Sidecars resolve each other by container name on the shared podman network
 (`aw-app-<app_id>-<sidecar-name>`) — see `aw-workspace` `src/apps/
 containers.py` `register_sidecar` if you need the mechanism, not just the
 names.
+
+## Retention
+
+`retention_days` in Settings (default **7**) caps how long traces/logs/
+metrics stay in ClickHouse — a real `ALTER TABLE ... MODIFY TTL` applied to
+already-stored data, not just newly-ingested data. Saving a new value
+restarts the `clickhouse` sidecar (config-change auto-restart, same
+mechanism any other `${config.x}`-fed sidecar env uses); its wrapper
+re-applies the TTL to every table that holds ingested volume. ClickHouse's
+own background merge does the actual deletion afterward — expect disk to
+shrink over minutes-to-hours, not instantly. See
+`docs/architecture/aw-app-signoz.md` "Retention" for the exact table list
+and the two SigNoz-specific gotchas (a dynamic per-row TTL column on the
+logs tables, and `MODIFY TTL` being a rule change, not an instant purge).
 
 ## Debugging
 

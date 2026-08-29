@@ -53,13 +53,14 @@
       },
       {
         "name": "clickhouse",
-        "image": "clickhouse/clickhouse-server:25.5.6",
+        "image": "ghcr.io/tekflox/aw-app-signoz-clickhouse:latest",
         "resources": {
           "cpus": 1,
           "mem_mb": 4096
         },
         "env": {
-          "CLICKHOUSE_SKIP_USER_SETUP": "1"
+          "CLICKHOUSE_SKIP_USER_SETUP": "1",
+          "AW_SIGNOZ_RETENTION_DAYS": "${config.retention_days}"
         },
         "volumes": [
           {
@@ -153,6 +154,13 @@
         "default": "change-me-please-rotate-this-secret",
         "title": "Session signing secret",
         "description": "Signs SigNoz's own login sessions. Ships with a default \u2014 rotate it here before relying on this instance for anything sensitive; changing it invalidates existing SigNoz sessions."
+      },
+      "retention_days": {
+        "type": "integer",
+        "default": 7,
+        "minimum": 1,
+        "title": "Retention (days)",
+        "description": "How long ingested traces/logs/metrics are kept before ClickHouse drops them (a real ALTER TABLE ... MODIFY TTL, applied to already-stored data too \u2014 not just data ingested after this changes). Default is intentionally short so storage doesn't grow unbounded; raise it if you need a longer history."
       }
     },
     "required": []

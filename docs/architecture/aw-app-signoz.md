@@ -16,9 +16,10 @@ framework's own Tier-2 code (`src/apps/containers.py`,
 `src/apps/runtime.py` `_register_sidecars`) — turned out to already exist
 and fit far better: **`runtime.sidecars`**, the same mechanism
 `aw-app-crispal` uses for its MySQL + WordPress companions. Each of the four
-components ships as its own container, using the **unmodified official
-upstream image** for three of them (`clickhouse/clickhouse-server`,
-`signoz/zookeeper`, `signoz/signoz`) plus one thin custom wrapper (below).
+components ships as its own container. Two run the unmodified official
+upstream image (`signoz/zookeeper`, `signoz/signoz`); the other two
+(`clickhouse`, `otelcol`) are thin custom wrappers — see below for why each
+one needed a wrapper at all.
 This was chosen over hand-rolling a single merged rootfs (copying ClickHouse,
 a JRE for Zookeeper, and two Go binaries into one base image) because that
 path has real, hard-to-verify compatibility risk (glibc/musl mismatches
@@ -50,6 +51,53 @@ migrate-then-serve sequence, published as
 running them on every container start (this framework's sidecars always
 `restart: unless-stopped`, so "on every start" is the only hook available) is
 safe rather than merely convenient.
+
+## Retention: configurable, enforced with a real `ALTER TABLE ... MODIFY TTL`
+
+Frederico's explicit ask (added after the initial build): a configurable
+retention cap, defaulting to 7 days, that actually shrinks storage for data
+already sitting in ClickHouse — not just a knob that only affects data
+ingested after the change. `config_schema.retention_days` (default `7`)
+feeds `AW_SIGNOZ_RETENTION_DAYS` into the `clickhouse` sidecar's env, which
+is why that sidecar is now ALSO a custom wrapper
+(`container/clickhouse/Dockerfile` + `entrypoint.sh`) instead of the stock
+image: on every start, it waits for ClickHouse to accept connections, then
+runs `ALTER TABLE <db>.<table> ON CLUSTER cluster MODIFY TTL <expr>` against
+the tables that actually hold ingested volume (traces: `signoz_index_v3`,
+`signoz_spans`, `signoz_error_index_v2`; logs: `logs_v2`,
+`logs_v2_resource`; metrics: `samples_v2`, `samples_v4` and its `_agg_5m`/
+`_agg_30m` rollups, `time_series_v4` and its `_6hrs`/`_1day`/`_1week`
+rollups, `exp_hist`) — verified live against a real running instance (see
+`inspect_ttl_precise.out` in the delivery notes) rather than guessed from
+SigNoz's source.
+
+Two things worth knowing:
+
+- **`logs_v2`/`logs_v2_resource` ship with a *dynamic*, per-row
+  `_retention_days` column** — SigNoz's own built-in retention-settings
+  feature (its UI has a "Retention Period" control that presumably drives
+  this column, not a static per-table TTL). This app overrides that with a
+  static TTL keyed to `retention_days` instead, per Frederico's explicit
+  ask for `ALTER TABLE ... MODIFY TTL`. The `_retention_days` column itself
+  is harmless left unused — nothing else reads it once the TTL expression
+  no longer references it.
+- **`MODIFY TTL` changes the *rule*, not an instant deletion.** ClickHouse's
+  own background merge process drops newly-expired parts on its own
+  schedule (every table here already has `ttl_only_drop_parts = 1`, so it
+  drops whole parts cheaply rather than rewriting them) — expect actual
+  disk shrinkage over minutes-to-hours after a retention decrease, not
+  immediately on save.
+
+Config-save wiring reuses the SAME mechanism the OTLP/DSN fixes already
+depend on: `src/apps/routes.py` `_apply_runtime_config` restarts a sidecar
+whenever a `${config.x}` value baked into its `env` changes — so saving a
+new `retention_days` in Settings recreates the `clickhouse` sidecar
+automatically, and the wrapper's entrypoint re-applies TTL with the new
+value. First-install ordering is handled the same way `otelcol`'s migration
+retry works: `entrypoint.sh` retries each `ALTER TABLE` (5s backoff, 60
+attempts per table) since these tables don't exist yet until the `otelcol`
+sidecar's own migration creates them, and starting them in the "wrong"
+order isn't sequenced by the framework either.
 
 ## OTLP ingest exposure — the decision the next card depends on
 

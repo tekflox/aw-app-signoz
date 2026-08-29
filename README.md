@@ -14,8 +14,11 @@ gets its own isolated instance; nothing is shared with other tenants.
   hostname.
 - Keeps everything it ingests in a ClickHouse database that survives a
   container recreation (an app update, a workspace redeploy) — telemetry
-  history isn't lost when the app restarts. Disk usage grows with how much
-  telemetry you retain; the ~5 GB estimate is a starting point, not a cap.
+  history isn't lost when the app restarts.
+- Caps storage automatically: retention defaults to 7 days and is
+  enforced by ClickHouse itself (a real TTL, not an external cleanup job),
+  so disk usage doesn't grow unbounded. Raise it in Settings if you want a
+  longer history.
 
 ## Why Use It
 
@@ -47,6 +50,11 @@ this workspace or reachable from outside it — can send data to.
 - **Session signing secret** (Settings) — rotates SigNoz's own login-session
   signing key. Ships with a default; change it before relying on this
   instance for anything sensitive.
+- **Retention (days)** (Settings) — how long traces/logs/metrics are kept
+  before ClickHouse drops them. Defaults to 7 days, intentionally short so
+  storage doesn't grow unbounded; raise it if you need a longer history.
+  Changing it actually shrinks storage for data already ingested, not just
+  data ingested after the change.
 
 Everything else (admin account, dashboards, alerts) is configured inside the
 SigNoz UI itself, not through this app's Settings — SigNoz already has its
