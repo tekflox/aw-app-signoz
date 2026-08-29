@@ -1,0 +1,73 @@
+# otel-collector-config.yaml — the SigNoz-flavoured OTel Collector this app
+# ships, trimmed down from the monolith's aw-signoz setup
+# (repos/agentic-workspace/docker-compose.signoz.yml's otel-collector service)
+# to just the OTLP receiver -> ClickHouse pipeline. The monolith's extra
+# scrapers (Caddy admin metrics, host aw-postgres/aw-redis, docker_stats,
+# hostmetrics, filelog/docker container-log tailing) are monolith-specific —
+# they assume host-level access (docker.sock, /hostfs, a shared network
+# namespace with a specific sibling container) that this Tier-2 app
+# deliberately does not request. This app's job is to accept OTLP from
+# already-instrumented workspace components, not to re-scrape the host.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 10000
+    send_batch_max_size: 11000
+    timeout: 10s
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 1500
+    spike_limit_mib: 512
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+
+exporters:
+  clickhousetraces:
+    datasource: tcp://aw-app-signoz-clickhouse:9000
+    low_cardinal_exception_grouping: false
+    use_new_schema: true
+  signozclickhousemetrics:
+    dsn: tcp://aw-app-signoz-clickhouse:9000
+  clickhouselogsexporter:
+    dsn: tcp://aw-app-signoz-clickhouse:9000
+    timeout: 10s
+    use_new_schema: true
+  signozclickhousemeter:
+    dsn: tcp://aw-app-signoz-clickhouse:9000
+    timeout: 45s
+    sending_queue:
+      enabled: false
+  metadataexporter:
+    cache:
+      provider: in_memory
+    dsn: tcp://aw-app-signoz-clickhouse:9000
+    enabled: true
+    timeout: 45s
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [clickhousetraces]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [signozclickhousemetrics]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [clickhouselogsexporter]

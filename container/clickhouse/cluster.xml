@@ -1,0 +1,21 @@
+<clickhouse>
+    <!--
+      Single-node "cluster" definition — required because SigNoz's schema
+      migrator issues `ON CLUSTER '{cluster}'` DDL even for a one-node
+      ClickHouse (see SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER in
+      otel-collector-config.yaml, which must name THIS cluster). Ported from
+      SigNoz's own self-host docker-compose reference config, trimmed to one
+      shard / one replica since this app runs one ClickHouse per workspace,
+      not a multi-node deployment.
+    -->
+    <remote_servers>
+        <cluster>
+            <shard>
+                <replica>
+                    <host>localhost</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </cluster>
+    </remote_servers>
+</clickhouse>

@@ -1,0 +1,10 @@
+<clickhouse>
+    <!--
+      Ported verbatim from the monolith's SigNoz setup
+      (repos/agentic-workspace/data/signoz/clickhouse-config/memory.xml) — a
+      generous cap so a single busy workspace doesn't OOM the ClickHouse
+      process against the app's own resource limit. Tune down if this app's
+      runtime.resources.mem_mb (aw-app.json) is lowered.
+    -->
+    <max_server_memory_usage>4294967296</max_server_memory_usage>
+</clickhouse>
