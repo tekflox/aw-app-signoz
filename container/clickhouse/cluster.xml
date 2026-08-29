@@ -7,6 +7,13 @@
       SigNoz's own self-host docker-compose reference config, trimmed to one
       shard / one replica since this app runs one ClickHouse per workspace,
       not a multi-node deployment.
+
+      The <zookeeper> block is NOT optional even for one node — confirmed
+      live: without it ClickHouse rejects SigNoz's ReplicatedMergeTree DDL
+      with "code: 139, message: There is no Zookeeper configuration in
+      server config" and the otelcol migration retries forever. Points at
+      this app's own zookeeper sidecar by its framework-assigned DNS name
+      (aw-app-<id>-<sidecar-name>).
     -->
     <remote_servers>
         <cluster>
@@ -18,4 +25,13 @@
             </shard>
         </cluster>
     </remote_servers>
+    <zookeeper>
+        <node>
+            <host>aw-app-signoz-zookeeper</host>
+            <port>2181</port>
+        </node>
+    </zookeeper>
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
 </clickhouse>
