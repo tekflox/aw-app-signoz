@@ -21,12 +21,15 @@
       "cpus": 0.25,
       "mem_mb": 128
     },
+    "env": {
+      "AW_SIGNOZ_API_KEY": "${env.AW_WORKSPACE_API_KEY}"
+    },
     "volumes": [
       {
         "source": "container/nginx/nginx.conf",
-        "target": "/etc/nginx/conf.d/default.conf",
+        "target": "/etc/nginx/templates/default.conf.template",
         "mode": "ro",
-        "reason": "Path-routes this app's single public port: OTLP/HTTP's three signal paths (/v1/traces, /v1/metrics, /v1/logs) go to the otel-collector sidecar, everything else goes to the SigNoz UI/API sidecar. See docs/architecture/aw-app-signoz.md."
+        "reason": "Path-routes this app's single public port: OTLP/HTTP's three signal paths (/v1/traces, /v1/metrics, /v1/logs) go to the otel-collector sidecar, gated by the workspace API key since this app runs with the workspace identity gate off; everything else goes to the SigNoz UI/API sidecar, which has its own login. Mounted under /etc/nginx/templates/ (not conf.d/ directly) so nginx:alpine's own entrypoint runs envsubst over it at container start, baking AW_SIGNOZ_API_KEY's live value into the generated config. See docs/architecture/aw-app-signoz.md."
       }
     ],
     "sidecars": [

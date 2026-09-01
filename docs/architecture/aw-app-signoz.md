@@ -150,6 +150,44 @@ this card's scope needed gRPC, and multiplexing gRPC's HTTP/2 framing
 through the same nginx path-routing as plain HTTP/1.1 REST wasn't worth the
 added complexity for a v1.
 
+### 2026-08-30 update: auth moved from `IdentityGuard` to nginx itself
+
+The paragraph above assumed the app stays behind the workspace's
+`IdentityGuard` (`auth_required: true`) for every path. That assumption
+broke in practice: SigNoz has its own real login/session system, and the
+workspace's identity gate — both `IdentityGuard` and aw-backend's own edge
+membership check — intercepted SigNoz's own `Authorization: Bearer
+<signoz-token>` calls and tried (and failed) to verify them as the
+workspace's own identity JWT, which is what caused the SPA's post-login
+`authz/check` to 401 and bounce back to `/login` (bug:
+`signoz-login-authz-check-401-bounce`).
+
+The fix for that bug is to run this app with `auth_required: false` /
+`public: true`, so the workspace stops intercepting any request to this
+app's hostname and SigNoz's own auth is the only gate on the UI/API surface
+(`location /`). That, by itself, also turned off the *only* auth the OTLP
+paths had — they have none of their own — which is what let an
+unauthenticated `POST /v1/traces` from the open internet succeed (confirmed
+live, same day). The two paths need genuinely different treatment and the
+framework has no per-route `auth_required` (confirmed by reading
+`src/apps/manifest.py` and `src/apps/runtime.py`'s `IdentityGuard` — the
+flag is a single whole-app boolean, and the `Host(f"{app_id}.app.{{_:str}}")`
+mount shares the exact same guard instance as the `/api/apps/<id>` mount, so
+there is no path-level knob to flip there either).
+
+So the `X-Api-Key` check described above moved from `IdentityGuard` into
+`nginx.conf` itself, scoped to exactly the three OTLP `location` blocks —
+`location /` is untouched and reaches the `backend` sidecar with no gate of
+its own, same as any other request SigNoz would normally receive from the
+open internet on a self-hosted install. The workspace API key's live value
+is baked into the container's own generated nginx config at start time via
+the stock `nginx:alpine` image's `envsubst`-on-templates mechanism (the
+volume mount target is `/etc/nginx/templates/default.conf.template`, not
+`conf.d/default.conf` directly) — see the comment block at the top of
+`container/nginx/nginx.conf` for exactly how that works and its one caveat
+(a regenerated workspace API key needs this app's container restarted to
+take effect, same as `jwt_secret`/`retention_days` above).
+
 ## What's intentionally NOT ported from the monolith's config
 
 The monolith's `otel-collector-config.yaml` also scraped Caddy's admin
