@@ -99,6 +99,103 @@ attempts per table) since these tables don't exist yet until the `otelcol`
 sidecar's own migration creates them, and starting them in the "wrong"
 order isn't sequenced by the framework either.
 
+## Managed root account — config block, not an API
+
+Frederico wanted a way to set/reset SigNoz's admin (root) account from this
+app's own Settings, instead of relying on SigNoz's one-shot signup screen or
+asking an agent to hand-provision the account again after every incident.
+
+**Why a config block and not a direct DB write or an HTTP reset.** SigNoz
+v0.128.0 ships a first-class, upstream-supported root-account provisioner:
+`pkg/modules/user/config.go`'s `RootConfig{Enabled, Email, Password,
+Org{ID, Name}}`, validated in `Config.Validate()`, reconciled by
+`impluser/service.go`'s `service.Start()` loop (10s retry) at backend
+startup — bootstrap (`CreateFirstUser`, org + root user + roles + all 254
+authz tuples) when no matching org exists, promote-or-reset
+(`createOrPromoteRootUser` / `updateExistingRootUser` → `PromoteToRoot`,
+`UpdateEmail`, `setPassword`) otherwise. `setPassword` is a no-op when the
+stored bcrypt hash already matches, and a real re-hash
+(`bcrypt.GenerateFromPassword`, cost 10) when it doesn't — so saving the
+same password twice is safe, and saving a new one actually rotates it.
+A raw SQLite write was rejected outright: it would have to reimplement that
+hashing scheme, org wiring and the 254 authz tuples by hand, all of which
+the upstream reconciler already does correctly and re-validates on every
+restart. An HTTP-based reset was rejected because SigNoz does not offer
+one for the root user on purpose — both `GetOrCreateResetPasswordToken` and
+`UpdatePasswordByResetPasswordToken` call `user.ErrIfRoot()`, closing every
+API password path for root specifically because root is meant to be
+config-managed. Verified live against this app's own instance: a bogus
+reset token answers `reset_password_token_not_found`, and `/register`
+(signup) answers `self-registration is disabled` once the config's `Root.
+Enabled` is on (`pkg/query-service/app/http_handler.go` sets
+`SetupCompleted = true` in that case, which is what disables the signup
+screen).
+
+**Wiring.** Four new `config_schema` fields feed four new env vars on the
+`backend` sidecar via the koanf env mapping `pkg/config/envprovider/
+provider.go` uses (prefix `SIGNOZ_`, `_` nests as `::`, `__` escapes a
+literal underscore): `root_account_managed` → `SIGNOZ_USER_ROOT_ENABLED`,
+`root_email` → `SIGNOZ_USER_ROOT_EMAIL`, `root_password` (`x-secret`) →
+`SIGNOZ_USER_ROOT_PASSWORD`, `root_org_id` → `SIGNOZ_USER_ROOT_ORG_ID`.
+`SIGNOZ_USER_ROOT_ORG_NAME` is deliberately not exposed — SigNoz defaults it
+to `"default"`, and a knob nobody needs is worse than the default. Saving
+these in Settings goes through the same `_apply_runtime_config` config-save
+path that `jwt_secret`/`retention_days` already use — it restarts the
+`backend` sidecar, whose reconcile loop then applies the change.
+
+**Why `root_account_managed` is a string enum (`["", "true"]`), not a
+boolean.** `src/apps/containers.py` `expand_value` drops an env var
+entirely when the resolved config value is the empty *string* — `value is
+not None and value != ""` — and only on that exact case. A boolean `false`
+would resolve to the Python string `"False"` (truthy to koanf) and get
+passed through as `SIGNOZ_USER_ROOT_ENABLED=False`, silently turning root
+management on with an all-empty config the first time someone saved any
+other setting on this form. The empty-string enum makes "off" and "field
+never configured" the same absent-env-var state, so a fresh install and an
+unmodified existing install both keep behaving exactly like before this
+feature shipped.
+
+**Nothing here validates the password before saving.** `root_password`
+carries a `pattern` mirroring Go's `IsPasswordValid` (≥12 chars, at least
+one lowercase/uppercase/digit/symbol from `` ~!@#$%^&*()_+`-={}|[]\:"<>?,./
+``, ASCII-only where Go's check is Unicode-aware — strictly stricter, so it
+can never accept something SigNoz would reject) — but it exists purely as
+machine-readable spec and documentation. `_coerce_config` in `src/apps/
+routes.py` only coerces booleans; `AppConfigBody.jsx` renders a bare
+`<input>` with no `pattern`/`minLength` attribute wired up. Saving a
+password that fails SigNoz's own `Config.Validate()` makes SigNoz's backend
+refuse to start at all — a real crash loop under this framework's
+`restart: unless-stopped`, and a crash-looping container here has
+previously leaked hundreds of duplicate iptables rules (see the
+`aw-autoskill-iptables-dedupe-crash-loop` skill). Recovery is to blank
+`root_account_managed` back to `""` in Settings and save — that alone
+un-sets the env var and lets the backend start again on its next restart.
+
+**The `root_org_id` adoption trap.** `reconcile()` finds the org to attach
+the root user to via `orgGetter.GetByIDOrName(cfg.Org.ID, cfg.Org.Name)`;
+with `Org.ID` empty it falls back to `GetByName("default")`
+(`implorganization/getter.go`). An org that was bootstrapped through
+SigNoz's own signup screen before this feature existed does not necessarily
+have that name — this app's own live instance has one org with `name =
+NULL`. `GetByName("default")` will not match a `NULL` name, so leaving
+`root_org_id` blank on an already-bootstrapped instance does not fail
+loudly — it succeeds, but at `CreateFirstUser`, quietly creating a *second*,
+brand-new, empty organization (dashboards, saved views and all ingested
+telemetry are scoped per-org). The person configuring this would log in
+successfully and see nothing they had before. There is no way for this app
+to detect "this instance already has data under a differently-named org"
+automatically, so the field's own description tells the operator to look up
+the real org ID first rather than leave it blank by habit on an existing
+instance.
+
+**Exposure.** The password lands in `.aw-workspace/app-config/signoz.json`
+(0600, under a 0700 directory — the same place every other app's config
+secrets, like this app's own `jwt_secret`, already live) and in the
+`backend` sidecar's container environment, visible to anything holding the
+container socket. Same exposure class as `jwt_secret` above; nothing new is
+introduced here, and the field's description says so rather than implying a
+stronger guarantee.
+
 ## OTLP ingest exposure — the decision the next card depends on
 
 The card asked this to reuse the existing per-app public-hostname mechanism

@@ -97,7 +97,11 @@
           "SIGNOZ_ALERTMANAGER_PROVIDER": "signoz",
           "SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN": "tcp://aw-app-signoz-clickhouse:9000",
           "SIGNOZ_SQLSTORE_SQLITE_PATH": "/var/lib/signoz/signoz.db",
-          "SIGNOZ_TOKENIZER_JWT_SECRET": "${config.jwt_secret}"
+          "SIGNOZ_TOKENIZER_JWT_SECRET": "${config.jwt_secret}",
+          "SIGNOZ_USER_ROOT_ENABLED": "${config.root_account_managed}",
+          "SIGNOZ_USER_ROOT_EMAIL": "${config.root_email}",
+          "SIGNOZ_USER_ROOT_PASSWORD": "${config.root_password}",
+          "SIGNOZ_USER_ROOT_ORG_ID": "${config.root_org_id}"
         },
         "volumes": [
           {
@@ -164,6 +168,34 @@
         "minimum": 1,
         "title": "Retention (days)",
         "description": "How long ingested traces/logs/metrics are kept before ClickHouse drops them (a real ALTER TABLE ... MODIFY TTL, applied to already-stored data too \u2014 not just data ingested after this changes). Default is intentionally short so storage doesn't grow unbounded; raise it if you need a longer history."
+      },
+      "root_account_managed": {
+        "type": "string",
+        "enum": ["", "true"],
+        "default": "",
+        "title": "Manage the root account from these settings",
+        "description": "Off by default \u2014 a fresh install behaves exactly like today, with SigNoz's own signup screen creating the first account. Turn this on to set/reset SigNoz's root account (email + password) from this form instead: (1) it disables SigNoz's own signup screen the moment it's on, and (2) it makes the password below the source of truth \u2014 if you change the password inside SigNoz's own UI, this setting overwrites it back at the next backend restart. Nothing here validates the password before saving (see its own field); an invalid one stops the SigNoz backend from starting until you blank this switch again."
+      },
+      "root_email": {
+        "type": "string",
+        "default": "",
+        "title": "Root account email",
+        "description": "Email for the managed root account. Only used while \"Manage the root account from these settings\" is on. Changing it re-points the existing root user at the new address on the next backend restart \u2014 it does not create a second account."
+      },
+      "root_password": {
+        "type": "string",
+        "default": "",
+        "x-secret": true,
+        "minLength": 12,
+        "pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[~!@#$%^&*()_+`\\-={}|\\[\\]\\\\:\"<>?,./])[A-Za-z0-9~!@#$%^&*()_+`\\-={}|\\[\\]\\\\:\"<>?,./]{12,}$",
+        "title": "Root account password",
+        "description": "At least 12 characters, with at least one lowercase letter, one uppercase letter, one digit and one symbol (from ~!@#$%^&*()_+`-={}|[]\\:\"<>?,./) \u2014 SigNoz's own password policy, mirrored here as documentation only. Nothing in this form currently enforces the pattern or minimum length before saving; a password that fails SigNoz's own policy will make its backend refuse to start until this is fixed. Only used while \"Manage the root account from these settings\" is on."
+      },
+      "root_org_id": {
+        "type": "string",
+        "default": "",
+        "title": "Root organization ID (advanced)",
+        "description": "Leave this blank on a fresh install. Fill it in ONLY if this SigNoz instance already had an organization created through its own signup screen before this setting existed \u2014 set it to that organization's ID so the managed root account is applied to the SAME organization instead of silently creating a brand-new, empty one alongside it (no dashboards, no saved views, none of the telemetry already collected). Never guess or invent an ID here; look up the real one first."
       }
     },
     "required": []

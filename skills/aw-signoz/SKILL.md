@@ -38,11 +38,21 @@ OTEL_EXPORTER_OTLP_HEADERS=X-Api-Key=<this workspace's API key>
 ## Opening the UI
 
 The app's card in the Apps grid opens the SigNoz web UI directly (same
-public hostname as above, any other path). **First visit**: SigNoz has no
-preset admin account — create one through its own signup screen the first
-time anyone opens the UI. There is no env var or app Setting that
-pre-provisions this; it is SigNoz's own onboarding flow, and it is exactly
-how "not hardcoded" gets satisfied here — nobody ships a default password.
+public hostname as above, any other path). **First visit, by default**:
+SigNoz has no preset admin account — create one through its own signup
+screen the first time anyone opens the UI; nobody ships a default password.
+
+**Or set it from Settings instead.** Turning on "Manage the root account
+from these settings" makes this app's own config (`root_account_managed`,
+`root_email`, `root_password`, `root_org_id`) the source of the SigNoz root
+account, via SigNoz's own upstream-supported root-account provisioner
+(`pkg/modules/user`, `config.User.Root.*` / `SIGNOZ_USER_ROOT_*` env on the
+`backend` sidecar) instead of its signup screen. This is a config block, not
+an API — SigNoz deliberately closes every API password-reset path for the
+root user (`user.ErrIfRoot()`), precisely so root stays config-managed. See
+`docs/architecture/aw-app-signoz.md` "Managed root account" for the
+mechanism, the `root_org_id` adoption trap on an already-bootstrapped
+instance, and the crash-loop hazard from an invalid password.
 
 ## Containers (all sidecars of the `signoz` app id)
 
