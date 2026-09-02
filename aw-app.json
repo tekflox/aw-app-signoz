@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "signoz",
   "name": "SigNoz",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Self-hosted observability for this workspace \u2014 traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
   "icon": "activity",
   "tier": "container",
@@ -171,7 +171,10 @@
       },
       "root_account_managed": {
         "type": "string",
-        "enum": ["", "true"],
+        "enum": [
+          "",
+          "true"
+        ],
         "default": "",
         "title": "Manage the root account from these settings",
         "description": "Off by default \u2014 a fresh install behaves exactly like today, with SigNoz's own signup screen creating the first account. Turn this on to set/reset SigNoz's root account (email + password) from this form instead: (1) it disables SigNoz's own signup screen the moment it's on, and (2) it makes the password below the source of truth \u2014 if you change the password inside SigNoz's own UI, this setting overwrites it back at the next backend restart. Nothing here validates the password before saving (see its own field); an invalid one stops the SigNoz backend from starting until you blank this switch again."
