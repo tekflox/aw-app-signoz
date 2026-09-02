@@ -12,10 +12,17 @@ drops a placeholder on an empty *string*, so a boolean `False` would resolve
 to the literal `"False"` and get passed through, silently turning root
 management on. This asserts that behavior directly rather than assuming it.
 
-Needs an aw-workspace host checkout (`src/apps/containers.py`) alongside
-this app repo — skipped cleanly in this app's own standalone CI, which
-checks out only this repo. Run from within an aw-workspace checkout, e.g.
-`cd /opt/aw-workspace && .venv/aw/bin/python -m pytest repos/aw-app-signoz/tests/`.
+The two tests that call `expand_env` need an aw-workspace host checkout
+(`src/apps/containers.py`) alongside this app repo, unavailable in this
+app's own standalone CI (checks out only this repo) — each of those two
+lazy-imports it and skips individually rather than the whole module doing
+an import-time `importorskip`, so the manifest-shape tests below still
+collect and run there (a module-level skip would make this the only test
+file in `tests/`, all-skipped, 0 items collected — pytest exit code 5,
+which the release pipeline's `set -euo pipefail` treats as a hard failure).
+Run everything, including the `expand_env` tests, from within an
+aw-workspace checkout, e.g.
+`cd /opt/aw-workspace && python3 -m pytest repos/aw-app-signoz/tests/`.
 """
 from __future__ import annotations
 
@@ -23,13 +30,6 @@ import json
 import os
 
 import pytest
-
-pytest.importorskip(
-    "src.apps.containers",
-    reason="requires an aw-workspace host checkout (src/apps) alongside this app repo",
-)
-
-from src.apps.containers import expand_env
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST_PATH = os.path.join(APP_ROOT, "aw-app.json")
@@ -73,6 +73,12 @@ def test_root_account_managed_is_an_empty_string_default_enum(manifest):
 
 
 def test_expand_env_drops_all_four_vars_when_config_is_empty(backend_sidecar):
+    pytest.importorskip(
+        "src.apps.containers",
+        reason="requires an aw-workspace host checkout (src/apps) alongside this app repo",
+    )
+    from src.apps.containers import expand_env
+
     env = backend_sidecar["env"]
 
     # Default/fresh-install config: root_account_managed at its schema
@@ -93,6 +99,12 @@ def test_expand_env_drops_all_four_vars_when_config_is_empty(backend_sidecar):
 
 
 def test_expand_env_emits_all_four_vars_when_configured(backend_sidecar):
+    pytest.importorskip(
+        "src.apps.containers",
+        reason="requires an aw-workspace host checkout (src/apps) alongside this app repo",
+    )
+    from src.apps.containers import expand_env
+
     env = backend_sidecar["env"]
     config = {
         "root_account_managed": "true",
