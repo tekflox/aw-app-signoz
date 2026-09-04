@@ -63,6 +63,70 @@ instance, and the crash-loop hazard from an invalid password.
 | `aw-app-signoz-otelcol` | `ghcr.io/tekflox/aw-app-signoz-otelcol` (this repo's own thin wrapper, see `container/otelcol/`) | Accepts OTLP, writes to ClickHouse. The wrapper's `entrypoint.sh` runs ClickHouse schema migrations before serving — the Tier-2 sidecar manifest has no `command` override, so this had to move into the image. |
 | `aw-app-signoz-clickhouse` | `ghcr.io/tekflox/aw-app-signoz-clickhouse` (this repo's own thin wrapper, see `container/clickhouse/`) | All ingested telemetry. `$AW_APP_DATA/clickhouse` is the durable volume — this is the data that matters most to not lose. The wrapper's `entrypoint.sh` applies the configurable retention TTL (below) on every start. |
 | `aw-app-signoz-zookeeper` | `signoz/zookeeper:3.7.1` | ClickHouse's replicated-table-engine coordination store (used even for one node — SigNoz's schema always uses `ReplicatedMergeTree`). |
+| `aw-app-signoz-mcp` | `signoz/signoz-mcp-server:v0.14.0` | The official SigNoz query MCP server — see "Querying via MCP tools" below. Talks to `backend` over the internal network (`http://aw-app-signoz-backend:8080`), never through the public edge. |
+
+## Querying via MCP tools
+
+Agents can query this instance's logs, traces, metrics, alerts, dashboards
+and views directly — no need to open the UI or hit ClickHouse by hand. This
+is the official SigNoz MCP server (`github.com/SigNoz/signoz-mcp-server`),
+running as this app's own `mcp` sidecar, speaking Streamable HTTP natively
+(`TRANSPORT_MODE=http`) — the exact shape `aw-mcp-gateway`'s `HttpUpstream`
+consumes, so no bridge process exists. It shows up on the gateway prefixed
+`aw__signoz__...`.
+
+**One-time manual setup (Frederico, or whoever owns this workspace):**
+
+1. Open this app's SigNoz UI from the Apps grid.
+2. Go to **Settings → API Keys** and create a Personal Access Token.
+3. Paste it into this app's own **Settings → "SigNoz API key"** field.
+
+This is a **SigNoz-native** credential (`SIGNOZ-API-KEY` header), not this
+workspace's own API key — that one only guards the three OTLP ingest paths
+(see `docs/app-workspace-api-auth.md`); everything under `/api/` on the
+SigNoz backend answers to SigNoz's own login/session system instead. Until
+step 3 the `signoz_api_key` config is empty, `mcp.template.json`'s
+`${config.signoz_api_key}` placeholder stays unresolved, and
+`src/apps/mcp_template.py`'s renderer marks the upstream **disabled** —
+deliberately, so an unconfigured key reads as "off" on `doctor`/`/status`
+rather than as a connected upstream 401ing on every call.
+
+Two everyday tools, same shape as the monolith's `aw-system-analyst` skill
+used them:
+
+- `signoz_search_logs` — filter by `service.name`, `body ILIKE`, container
+  id, time range, etc.
+- `signoz_aggregate_logs` — `groupBy`/`orderBy`/`timeRange` aggregation over
+  the same filters.
+
+The rest of the ~43-tool surface (traces, metrics, alerts, dashboards,
+notification channels, saved views, a docs search/fetch pair) is documented
+in the upstream README, not repeated here.
+
+### Known gaps — don't chase these, they're expected
+
+- **All-or-nothing allowlisting.** `aw-mcp-gateway`'s allowlist gates a
+  whole upstream, not individual tools (`back/gateway/server.py`). Turning
+  this on exposes all ~43 tools to every agent on this tenant, including 12
+  **mutant** ones — `signoz_create_alert` / `_update_alert` / `_delete_alert`,
+  the same create/update/delete trio for dashboards, notification channels
+  and saved views. There is no way to expose only the read-only query tools
+  today; the only lever is the config field itself (blank = the whole
+  upstream is off).
+- **Health checks: use `/livez`, never `/readyz`.** The binary's docs
+  indexer (`signoz_search_docs`/`signoz_fetch_doc`) crawls signoz.io's
+  sitemap on startup and keeps a bleve index in RAM, with **no env to turn
+  it off**. `/readyz` (and `/healthz`) stay `503` until that indexing
+  finishes, which has nothing to do with whether the query tools work.
+  `/livez` is the shallow "process can answer HTTP" probe — that's the one
+  that reflects whether this sidecar is actually usable.
+- **Dashboard tools 404 on this app's pinned SigNoz version.** The 7
+  dashboard tools (`signoz_create_dashboard`/`get`/`update`/`patch`/`list`/
+  `delete`/`import_dashboard`) need SigNoz **≥ v0.135.0** (they use the
+  v2/Perses dashboards API); this app pins `signoz/signoz:v0.128.0`. They
+  will 404 on day one — that's expected, not a bug to fix here. Alert-rule
+  tools need ≥ v0.120.0 and alert-history tools need ≥ v0.118.0, both
+  already satisfied. Log/trace/metric/alert query tools are unaffected.
 
 Sidecars resolve each other by container name on the shared podman network
 (`aw-app-<app_id>-<sidecar-name>`) — see `aw-workspace` `src/apps/

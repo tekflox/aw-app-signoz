@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "signoz",
   "name": "SigNoz",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Self-hosted observability for this workspace \u2014 traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
   "icon": "activity",
   "tier": "container",
@@ -125,6 +125,20 @@
           "SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION": "true",
           "SIGNOZ_OTEL_COLLECTOR_TIMEOUT": "10m"
         }
+      },
+      {
+        "name": "mcp",
+        "image": "signoz/signoz-mcp-server:v0.14.0",
+        "resources": {
+          "cpus": 0.25,
+          "mem_mb": 512
+        },
+        "env": {
+          "TRANSPORT_MODE": "http",
+          "MCP_SERVER_PORT": "8000",
+          "SIGNOZ_URL": "http://aw-app-signoz-backend:8080",
+          "LOG_LEVEL": "info"
+        }
       }
     ]
   },
@@ -151,7 +165,19 @@
         "path": "skills/aw-signoz/SKILL.md",
         "description": "Use this workspace's own SigNoz \u2014 the OTLP endpoint format, auth, and what's mounted where."
       }
-    ]
+    ],
+    "mcp": {
+      "provides": [
+        "signoz_search_logs",
+        "signoz_aggregate_logs",
+        "signoz_search_traces",
+        "signoz_aggregate_traces",
+        "signoz_get_trace_details",
+        "signoz_list_services",
+        "signoz_query_metrics",
+        "signoz_list_alerts"
+      ]
+    }
   },
   "config_schema": {
     "type": "object",
@@ -199,6 +225,13 @@
         "default": "",
         "title": "Root organization ID (advanced)",
         "description": "Leave this blank on a fresh install. Fill it in ONLY if this SigNoz instance already had an organization created through its own signup screen before this setting existed \u2014 set it to that organization's ID so the managed root account is applied to the SAME organization instead of silently creating a brand-new, empty one alongside it (no dashboards, no saved views, none of the telemetry already collected). Never guess or invent an ID here; look up the real one first."
+      },
+      "signoz_api_key": {
+        "type": "string",
+        "format": "password",
+        "default": "",
+        "title": "SigNoz API key (for the query MCP tools)",
+        "description": "A Personal Access Token created INSIDE SigNoz itself (open this app, then Settings \u2192 API Keys \u2014 not this workspace's own API key, which is a different credential used only for the OTLP ingest paths). Lets agents query this instance's logs/traces/metrics/alerts/dashboards through MCP tools (signoz_search_logs, signoz_aggregate_logs, and 40+ more \u2014 see the aw-signoz skill for the full list and its known gaps). Leave empty to keep those tools off \u2014 an empty value disables the upstream instead of connecting and failing every call with 401. Stored with this app's settings, so it survives updates and reinstalls."
       }
     },
     "required": []

@@ -62,3 +62,6 @@ temp/
 # `npm run build`, so a gitignored bundle means the installed app points at a
 # file that does not exist and its whole frontend silently vanishes.
 !ui/dist/
+
+# Generated from mcp.template.json by aw-workspace on every activation.
+mcp.json

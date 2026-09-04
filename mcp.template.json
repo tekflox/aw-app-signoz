@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "The official SigNoz MCP server (github.com/SigNoz/signoz-mcp-server),",
+    "exposed to agents through aw-mcp-gateway. Runs as this app's own",
+    "'mcp' sidecar (see aw-app.json runtime.sidecars) and talks Streamable",
+    "HTTP natively — no bridge needed.",
+    "",
+    "This is a TEMPLATE. aw-workspace renders it into mcp.json — the file the",
+    "gateway's app-scan actually reads — on every activation and every config",
+    "save, resolving ${config.x} against this app's saved settings. Do not edit",
+    "the rendered mcp.json: it is overwritten, and the value you want lives in",
+    "the app's Settings instead.",
+    "",
+    "To turn these tools on:",
+    "  1. Open this app's SigNoz UI, then Settings -> API Keys.",
+    "  2. Create a Personal Access Token there — this is a SigNoz-native",
+    "     credential, NOT this workspace's own API key (that one only",
+    "     guards the OTLP ingest paths, see docs/app-workspace-api-auth.md).",
+    "  3. Paste it into this app's own Settings -> 'SigNoz API key'.",
+    "",
+    "Until step 3, signoz_api_key is empty, the renderer disables this server,",
+    "and the gateway serves no SigNoz query tools — deliberately, because an",
+    "upstream configured with an unresolved placeholder does not fail loudly.",
+    "It connects, gets a 401, and serves zero tools, which looks like a broken",
+    "app rather than an empty field."
+  ],
+  "mcpServers": {
+    "signoz": {
+      "enabled": true,
+      "type": "http",
+      "url": "http://aw-app-signoz-mcp:8000/mcp",
+      "headers": {
+        "SIGNOZ-API-KEY": "${config.signoz_api_key}"
+      }
+    }
+  }
+}

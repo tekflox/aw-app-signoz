@@ -19,6 +19,10 @@ gets its own isolated instance; nothing is shared with other tenants.
   enforced by ClickHouse itself (a real TTL, not an external cleanup job),
   so disk usage doesn't grow unbounded. Raise it in Settings if you want a
   longer history.
+- Lets agents query this instance directly through MCP tools — logs,
+  traces, metrics, alerts, dashboards and saved views — instead of opening
+  the UI or querying ClickHouse by hand. See `skills/aw-signoz/SKILL.md`
+  "Querying via MCP tools" for the one-time setup and the known gaps.
 
 ## Why Use It
 
@@ -81,6 +85,14 @@ this workspace or reachable from outside it — can send data to.
   - The password is stored the same way this app already stores its
     session signing secret: in this workspace's app-config store and in
     the container's own environment, not specially encrypted beyond that.
+- **SigNoz API key** (Settings) — turns the MCP query tools on. This is a
+  manual, one-time step: open this app's own SigNoz UI, go to
+  **Settings → API Keys**, create a Personal Access Token there, then paste
+  it into this field. It is a SigNoz-native credential, not this
+  workspace's own API key. Leave it blank to keep the query tools off — see
+  `skills/aw-signoz/SKILL.md` "Querying via MCP tools" for the full setup
+  and the tools' known gaps (all-or-nothing allowlisting, dashboard tools
+  needing a newer SigNoz than this app ships).
 
 Everything else (dashboards, alerts) is configured inside the SigNoz UI
 itself, not through this app's Settings — SigNoz already has its own
