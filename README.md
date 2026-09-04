@@ -33,14 +33,17 @@ data stays in that workspace.
 
 ## How To Use It
 
-1. Install the app. Four containers come up alongside its own front door:
+1. Install the app. Six containers come up alongside its own front door:
    ClickHouse (storage), Zookeeper (ClickHouse's coordination store), the
-   SigNoz backend/UI, and an OTel Collector that accepts OTLP.
+   SigNoz backend/UI, an OTel Collector that accepts OTLP, the query MCP
+   server, and a provisioner that auto-creates the MCP query API key.
 2. Open the SigNoz card from the Apps grid. By default, nothing is
    pre-provisioned — the first person to open it creates the admin account
    through SigNoz's own signup screen. Turn on "Manage the root account from
    these settings" in Settings if you'd rather set/reset the admin email and
-   password yourself instead — see Configuration below.
+   password yourself instead — see Configuration below. Turning it on also
+   makes the SigNoz API key below provision itself automatically, with no
+   manual step.
 3. Point anything you want to observe at this workspace's OTLP endpoint —
    see `skills/aw-signoz/SKILL.md` for the exact URL/auth format, or
    `docs/architecture/aw-app-signoz.md` for why it's shaped that way.
@@ -85,14 +88,24 @@ this workspace or reachable from outside it — can send data to.
   - The password is stored the same way this app already stores its
     session signing secret: in this workspace's app-config store and in
     the container's own environment, not specially encrypted beyond that.
-- **SigNoz API key** (Settings) — turns the MCP query tools on. This is a
-  manual, one-time step: open this app's own SigNoz UI, go to
+- **SigNoz API key** (Settings) — turns the MCP query tools on. Filled in
+  automatically by this app's own provisioner sidecar while "Manage the
+  root account from these settings" is on — it logs into SigNoz with the
+  managed root account, creates a service account + API key, and saves it
+  here for you, no manual step. With the managed root account off, fill it
+  in yourself instead: open this app's own SigNoz UI, go to
   **Settings → API Keys**, create a Personal Access Token there, then paste
   it into this field. It is a SigNoz-native credential, not this
-  workspace's own API key. Leave it blank to keep the query tools off — see
-  `skills/aw-signoz/SKILL.md` "Querying via MCP tools" for the full setup
-  and the tools' known gaps (all-or-nothing allowlisting, dashboard tools
-  needing a newer SigNoz than this app ships).
+  workspace's own API key. A manually-pasted key that still validates is
+  left alone — the provisioner never overwrites a working key. Leave it
+  blank to keep the query tools off — see `skills/aw-signoz/SKILL.md`
+  "Querying via MCP tools" for the full setup and the tools' known gaps
+  (all-or-nothing allowlisting, dashboard tools needing a newer SigNoz than
+  this app ships).
+- **SigNoz API key provisioning status** (Settings) — read-only-in-practice
+  status from the provisioner sidecar explaining why the key above is or
+  isn't set (e.g. asking you to turn on the managed root account). Also
+  visible to `aw-workspace-cli doctor`.
 
 Everything else (dashboards, alerts) is configured inside the SigNoz UI
 itself, not through this app's Settings — SigNoz already has its own

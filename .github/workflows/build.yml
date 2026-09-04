@@ -3,8 +3,10 @@ name: Build custom images
 # Builds this app's custom images — thin wrappers around upstream SigNoz
 # components that need a startup step the Tier-2 sidecar manifest has no
 # command/entrypoint override for (see each Dockerfile's own comment):
-#   - container/otelcol/    -> migrate-then-serve
-#   - container/clickhouse/ -> apply configurable retention TTL, then serve
+#   - container/otelcol/     -> migrate-then-serve
+#   - container/clickhouse/  -> apply configurable retention TTL, then serve
+#   - container/provisioner/ -> this app's own code (auto-provisions
+#                                signoz_api_key), not an upstream wrapper
 # Every OTHER container this app runs (nginx, zookeeper, the signoz backend)
 # is an unmodified upstream image referenced directly in aw-app.json —
 # nothing to build for those.
@@ -49,6 +51,8 @@ jobs:
             context: container/otelcol
           - name: aw-app-signoz-clickhouse
             context: container/clickhouse
+          - name: aw-app-signoz-provisioner
+            context: container/provisioner
     name: ${{ matrix.image.name }}
     runs-on: [self-hosted, aw-baremetal]
     timeout-minutes: 60

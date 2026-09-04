@@ -30,6 +30,12 @@
         "target": "/etc/nginx/templates/default.conf.template",
         "mode": "ro",
         "reason": "Path-routes this app's single public port: OTLP/HTTP's three signal paths (/v1/traces, /v1/metrics, /v1/logs) go to the otel-collector sidecar, gated by the workspace API key since this app runs with the workspace identity gate off; everything else goes to the SigNoz UI/API sidecar, which has its own login. Mounted under /etc/nginx/templates/ (not conf.d/ directly) so nginx:alpine's own entrypoint runs envsubst over it at container start, baking AW_SIGNOZ_API_KEY's live value into the generated config. See docs/architecture/aw-app-signoz.md."
+      },
+      {
+        "source": "$AW_APP_DATA/provision",
+        "target": "/var/lib/aw-provision",
+        "mode": "ro",
+        "reason": "Read-only view of the provisioner sidecar's status.json, served publicly at /aw-provision/status.json (see container/nginx/nginx.conf) so contributes.doctor can see provisioning state without reaching into another container."
       }
     ],
     "sidecars": [
@@ -139,6 +145,30 @@
           "SIGNOZ_URL": "http://aw-app-signoz-backend:8080",
           "LOG_LEVEL": "info"
         }
+      },
+      {
+        "name": "provisioner",
+        "image": "ghcr.io/tekflox/aw-app-signoz-provisioner:latest",
+        "resources": {
+          "cpus": 0.1,
+          "mem_mb": 128
+        },
+        "env": {
+          "AW_SIGNOZ_BACKEND_URL": "http://aw-app-signoz-backend:8080",
+          "AW_WORKSPACE_PORT": "${env.AW_PORT}",
+          "AW_WORKSPACE_API_KEY": "${env.AW_WORKSPACE_API_KEY}",
+          "SIGNOZ_ROOT_MANAGED": "${config.root_account_managed}",
+          "SIGNOZ_ROOT_EMAIL": "${config.root_email}",
+          "SIGNOZ_ROOT_PASSWORD": "${config.root_password}"
+        },
+        "volumes": [
+          {
+            "source": "$AW_APP_DATA/provision",
+            "target": "/var/lib/aw-provision",
+            "mode": "rw",
+            "reason": "Where this sidecar publishes its own status.json (state machine: starting / workspace-unreachable / manual-key-required / provision-failed / ready / provisioned) — read read-only by the nginx sidecar and exposed at /aw-provision/status.json for contributes.doctor. Never holds the SigNoz API key itself; only human-readable state."
+          }
+        ]
       }
     ]
   },
@@ -177,7 +207,13 @@
         "signoz_query_metrics",
         "signoz_list_alerts"
       ]
-    }
+    },
+    "doctor": [
+      {
+        "label": "SigNoz API key provisioning",
+        "route": "/aw-provision/status.json"
+      }
+    ]
   },
   "config_schema": {
     "type": "object",
@@ -231,7 +267,13 @@
         "format": "password",
         "default": "",
         "title": "SigNoz API key (for the query MCP tools)",
-        "description": "A Personal Access Token created INSIDE SigNoz itself (open this app, then Settings \u2192 API Keys \u2014 not this workspace's own API key, which is a different credential used only for the OTLP ingest paths). Lets agents query this instance's logs/traces/metrics/alerts/dashboards through MCP tools (signoz_search_logs, signoz_aggregate_logs, and 40+ more \u2014 see the aw-signoz skill for the full list and its known gaps). Leave empty to keep those tools off \u2014 an empty value disables the upstream instead of connecting and failing every call with 401. Stored with this app's settings, so it survives updates and reinstalls."
+        "description": "Filled in automatically by this app's own provisioner sidecar when \"Manage the root account from these settings\" is on \u2014 it logs into SigNoz with the managed root account and creates this key itself, no manual step needed. You can still paste one here yourself (a Personal Access Token created INSIDE SigNoz: open this app, then Settings \u2192 API Keys \u2014 not this workspace's own API key, which is a different credential used only for the OTLP ingest paths); a manually-pasted key that still validates is left alone, never overwritten. Lets agents query this instance's logs/traces/metrics/alerts/dashboards through MCP tools (signoz_search_logs, signoz_aggregate_logs, and 40+ more \u2014 see the aw-signoz skill for the full list and its known gaps). Leave empty to keep those tools off \u2014 an empty value disables the upstream instead of connecting and failing every call with 401. Stored with this app's settings, so it survives updates and reinstalls."
+      },
+      "provision_status": {
+        "type": "string",
+        "default": "",
+        "title": "SigNoz API key provisioning status",
+        "description": "Read-only-in-practice status published by the provisioner sidecar (this form has no read-only widget yet, so it's technically editable \u2014 anything you type here is overwritten on the sidecar's next pass, whichever comes first). Explains why the SigNoz API key above is or isn't set: e.g. it asks you to turn on the managed root account, or reports that the key was created automatically. See also `aw-workspace-cli doctor`, which surfaces the same state."
       }
     },
     "required": []

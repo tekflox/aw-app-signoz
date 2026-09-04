@@ -1,6 +1,28 @@
 # Changelog
 
-## 0.8.0
+## 0.10.0
+
+Auto-provisions `signoz_api_key` — a new `provisioner` sidecar (Python
+stdlib on alpine, `ghcr.io/tekflox/aw-app-signoz-provisioner`) logs into
+SigNoz with the managed root account, creates a `aw-workspace-mcp` service
+account + `signoz-admin`-role API key through SigNoz v0.128.0's own API
+(there is no `/api/v1/pats` any more — retired by
+`sqlmigration/074_deprecate_api_key.go`; "Settings → API Keys" is service
+accounts now), and saves the key back with a partial
+`POST /api/apps/signoz/config` using the workspace API key. That save
+already re-renders `mcp.json` and hot-reloads the MCP gateway — zero
+aw-workspace core changes. Long-lived poller, idempotent (validates the
+stored key first and posts nothing when it still works; revokes-then-
+recreates on a name collision so no orphan keys accumulate). New
+`provision_status` config field and a `contributes.doctor` check
+(`/aw-provision/status.json`, served by the `nginx` sidecar from a shared
+volume) surface an explicit `manual-key-required` state when
+`root_account_managed` is off, instead of silently doing nothing. A
+manually-pasted key that still validates is left alone. See
+`skills/aw-signoz/SKILL.md` "Querying via MCP tools" for the full flow and
+`docs/architecture/aw-app-signoz.md` for the design.
+
+## 0.9.0
 
 Query MCP tools — a `mcp` sidecar running the official SigNoz MCP server
 (`signoz/signoz-mcp-server:v0.14.0`, `github.com/SigNoz/signoz-mcp-server`),

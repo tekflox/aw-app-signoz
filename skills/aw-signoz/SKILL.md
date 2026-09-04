@@ -64,6 +64,7 @@ instance, and the crash-loop hazard from an invalid password.
 | `aw-app-signoz-clickhouse` | `ghcr.io/tekflox/aw-app-signoz-clickhouse` (this repo's own thin wrapper, see `container/clickhouse/`) | All ingested telemetry. `$AW_APP_DATA/clickhouse` is the durable volume — this is the data that matters most to not lose. The wrapper's `entrypoint.sh` applies the configurable retention TTL (below) on every start. |
 | `aw-app-signoz-zookeeper` | `signoz/zookeeper:3.7.1` | ClickHouse's replicated-table-engine coordination store (used even for one node — SigNoz's schema always uses `ReplicatedMergeTree`). |
 | `aw-app-signoz-mcp` | `signoz/signoz-mcp-server:v0.14.0` | The official SigNoz query MCP server — see "Querying via MCP tools" below. Talks to `backend` over the internal network (`http://aw-app-signoz-backend:8080`), never through the public edge. |
+| `aw-app-signoz-provisioner` | `ghcr.io/tekflox/aw-app-signoz-provisioner` (this repo's own thin wrapper, see `container/provisioner/`) | Auto-provisions the `signoz_api_key` config field the `mcp` sidecar's header needs — see "Querying via MCP tools" below. Long-lived poller, never exits. |
 
 ## Querying via MCP tools
 
@@ -75,21 +76,42 @@ running as this app's own `mcp` sidecar, speaking Streamable HTTP natively
 consumes, so no bridge process exists. It shows up on the gateway prefixed
 `aw__signoz__...`.
 
-**One-time manual setup (Frederico, or whoever owns this workspace):**
+**Zero-touch when the managed root account is on.** The `provisioner`
+sidecar logs into SigNoz with the `root_account_managed` credentials
+(`root_email`/`root_password` in Settings), creates a `aw-workspace-mcp`
+service account with the `signoz-admin` role, mints a key via SigNoz
+v0.128.0's own API (there is no `/api/v1/pats` any more — that endpoint was
+retired by `sqlmigration/074_deprecate_api_key.go`; "Settings → API Keys"
+is service accounts now), and saves it into this app's own `signoz_api_key`
+setting through a partial `POST /api/apps/signoz/config` — the same save
+path a human editing Settings uses, which is what re-renders `mcp.json` and
+reloads the gateway. It's a long-lived poller (self-heals if the key is
+later revoked or SigNoz's SQLite is wiped) and idempotent — it validates the
+stored key first (`GET /api/v1/service_accounts/me` with the
+`SIGNOZ-API-KEY` header) and posts nothing when it still works, and
+revokes-then-recreates on a name collision so no orphan keys accumulate.
+
+**Manual fallback when it's off.** Turn on "Manage the root account from
+these settings" in Settings and the provisioner takes it from there. With
+it off, `contributes.doctor` reports `manual-key-required` (see
+`aw-workspace-cli doctor` or this app's own "SigNoz API key provisioning
+status" setting) and you're back to the original flow:
 
 1. Open this app's SigNoz UI from the Apps grid.
 2. Go to **Settings → API Keys** and create a Personal Access Token.
 3. Paste it into this app's own **Settings → "SigNoz API key"** field.
 
-This is a **SigNoz-native** credential (`SIGNOZ-API-KEY` header), not this
-workspace's own API key — that one only guards the three OTLP ingest paths
-(see `docs/app-workspace-api-auth.md`); everything under `/api/` on the
-SigNoz backend answers to SigNoz's own login/session system instead. Until
-step 3 the `signoz_api_key` config is empty, `mcp.template.json`'s
-`${config.signoz_api_key}` placeholder stays unresolved, and
-`src/apps/mcp_template.py`'s renderer marks the upstream **disabled** —
-deliberately, so an unconfigured key reads as "off" on `doctor`/`/status`
-rather than as a connected upstream 401ing on every call.
+Either way this is a **SigNoz-native** credential (`SIGNOZ-API-KEY`
+header), not this workspace's own API key — that one only guards the three
+OTLP ingest paths (see `docs/app-workspace-api-auth.md`); everything under
+`/api/` on the SigNoz backend answers to SigNoz's own login/session system
+instead. A manually-pasted key that still validates is left alone — the
+provisioner never fights a human who already fixed it. While
+`signoz_api_key` is empty, `mcp.template.json`'s `${config.signoz_api_key}`
+placeholder stays unresolved, and `src/apps/mcp_template.py`'s renderer
+marks the upstream **disabled** — deliberately, so an unconfigured key
+reads as "off" on `doctor`/`/status` rather than as a connected upstream
+401ing on every call.
 
 Two everyday tools, same shape as the monolith's `aw-system-analyst` skill
 used them:
