@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "signoz",
   "name": "SigNoz",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Self-hosted observability for this workspace \u2014 traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
   "icon": "activity",
   "tier": "container",
