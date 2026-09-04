@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "signoz",
   "name": "SigNoz",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Self-hosted observability for this workspace \u2014 traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
   "icon": "activity",
   "tier": "container",
@@ -35,7 +35,7 @@
         "source": "$AW_APP_DATA/provision",
         "target": "/var/lib/aw-provision",
         "mode": "rw",
-        "reason": "Shares the provisioner sidecar's status.json so nginx can serve it at /aw-provision/status.json for contributes.doctor, without reaching into another container. nginx itself never writes here — mode is rw only because runtime.py's loader rejects any $AW_APP_DATA-sourced volume mounted read-only, regardless of which container actually writes to it."
+        "reason": "Shares the provisioner sidecar's status.json so nginx can serve it at /aw-provision/status.json for contributes.doctor, without reaching into another container. nginx itself never writes here \u2014 mode is rw only because runtime.py's loader rejects any $AW_APP_DATA-sourced volume mounted read-only, regardless of which container actually writes to it."
       }
     ],
     "sidecars": [
