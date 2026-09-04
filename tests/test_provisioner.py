@@ -140,9 +140,12 @@ class FakeTransport:
         return [c for c in self.calls if c[0] == "POST" and c[1].endswith(path_suffix)]
 
 
-def make_provisioner(transport, tmp_path, *, root_managed=True, current_config=None):
-    transport.on("GET", "/api/apps/signoz/config", 200,
-                 {"config": current_config if current_config is not None else {}})
+def make_provisioner(transport, tmp_path, *, root_managed=True, current_config=None,
+                      root_org_id="01a053ad-d16f-79bd-9b2f-1f9bde1edda7"):
+    config = dict(current_config) if current_config is not None else {}
+    if root_org_id and "root_org_id" not in config:
+        config["root_org_id"] = root_org_id
+    transport.on("GET", "/api/apps/signoz/config", 200, {"config": config})
     transport.on("POST", "/api/apps/signoz/config", 200, {})
     return provision.Provisioner(
         signoz_url="http://aw-app-signoz-backend:8080",
@@ -216,6 +219,46 @@ def test_manual_key_required_is_not_reposted_once_status_already_matches(tmp_pat
     prov.run_once()
 
     assert transport.post_calls("/api/apps/signoz/config") == []
+
+
+def test_org_id_required_when_blank(tmp_path):
+    # Confirmed against a real SigNoz v0.128.0 instance: the login API
+    # hard-rejects a request with no orgId ("orgID is required"), and there
+    # is no unauthenticated way to discover one. root_managed + credentials
+    # alone are not enough — root_org_id must also be set.
+    transport = FakeTransport()
+    prov = make_provisioner(transport, tmp_path, current_config={"root_org_id": ""}, root_org_id=None)
+
+    result = prov.run_once()
+
+    assert result["ok"] is False
+    assert result["state"] == "org-id-required"
+    posts = transport.post_calls("/api/apps/signoz/config")
+    assert len(posts) == 1
+    assert posts[0][3]["config"] == {"provision_status": provision.STATE_MESSAGES["org-id-required"]}
+    # Must fail BEFORE attempting a login it knows will be rejected.
+    assert transport.post_calls("/api/v2/sessions/email_password") == []
+
+
+def test_login_request_includes_the_configured_org_id(tmp_path):
+    transport = FakeTransport()
+    prov = make_provisioner(transport, tmp_path, root_org_id="the-real-org-id")
+    transport.on("POST", "/api/v2/sessions/email_password", 200,
+                 {"data": {"accessToken": "jwt-token"}})
+    transport.on("GET", "/api/v1/roles", 200,
+                 {"data": [{"id": "role-1", "name": "signoz-admin"}]})
+    transport.on("GET", "/api/v1/service_accounts", 200, {"data": []})
+    transport.on("POST", "/api/v1/service_accounts", 201, {"data": {"id": "acct-1"}})
+    transport.on("POST", "/api/v1/service_accounts/acct-1/roles", 200, {})
+    transport.on("POST", "/api/v1/service_accounts/acct-1/keys", 201,
+                 {"data": {"id": "key-1", "key": "new-pat-abc"}})
+    transport.on("GET", "/api/v1/service_accounts/me", 200, {"data": {}})
+
+    prov.run_once()
+
+    login_calls = [c for c in transport.calls if c[1].endswith("/api/v2/sessions/email_password")]
+    assert len(login_calls) == 1
+    assert login_calls[0][3]["orgId"] == "the-real-org-id"
 
 
 def test_full_provision_flow_creates_service_account_and_key(tmp_path):

@@ -15,7 +15,10 @@ KB `crash-looping-container-leaks-iptables-rules`). Each pass:
      explicit "manual-key-required" status instead of silently doing
      nothing — a workspace with `root_account_managed` off keeps working
      exactly like before (paste a key by hand), it just isn't zero-touch.
-  4. Otherwise log in as root, ensure a `aw-workspace-mcp` service account
+  4. Otherwise, if `root_org_id` is blank, publish "org-id-required" —
+     SigNoz's login API hard-requires an org id (see `_login`) and there is
+     no unauthenticated way to discover one from scratch.
+  5. Otherwise log in as root, ensure a `aw-workspace-mcp` service account
      with the `signoz-admin` role, mint a key (revoke-then-recreate on a
      name collision so no orphan keys accumulate), validate it, and POST
      it back — bundled with the human-readable status in one save.
@@ -58,6 +61,12 @@ STATE_MESSAGES = {
         "Automatic key creation needs the managed root account. Turn on "
         "'Manage the root account from these settings', or paste a SigNoz "
         "API key below."
+    ),
+    "org-id-required": (
+        "Automatic key creation needs 'Root organization ID' filled in too "
+        "— SigNoz's login API requires it. Look up the real org ID (see "
+        "that field's own description) and paste it in, or paste a SigNoz "
+        "API key below instead."
     ),
     "provision-failed": (
         "Could not create a SigNoz API key automatically — check this "
@@ -161,10 +170,16 @@ class Provisioner:
             return False
         return status == 200
 
-    def _login(self) -> str:
+    def _login(self, org_id: str) -> str:
+        # v0.128.0's PostableEmailPasswordSession.UnmarshalJSON hard-rejects
+        # a zero orgId ("orgID is required") — confirmed against a real
+        # instance, not in the original design. There is no unauthenticated
+        # "list orgs" endpoint to discover it from scratch, so this app's own
+        # `root_org_id` config field (already documented for the managed-
+        # root-account feature) doubles as the login credential's org scope.
         status, body = self.http(
             "POST", f"{self.signoz_url}/api/v2/sessions/email_password",
-            body={"email": self.root_email, "password": self.root_password},
+            body={"email": self.root_email, "password": self.root_password, "orgId": org_id},
         )
         if status != 200:
             raise RuntimeError(f"login failed: HTTP {status} {body}")
@@ -263,8 +278,8 @@ class Provisioner:
             raise RuntimeError(f"key creation carried no key: {body}")
         return key
 
-    def _ensure_key(self) -> str:
-        token = self._login()
+    def _ensure_key(self, org_id: str) -> str:
+        token = self._login(org_id)
         role_id = self._find_role_id(token)
         account_id = self._find_service_account_id(token)
         if account_id is None:
@@ -290,8 +305,14 @@ class Provisioner:
             return self._write_local_status(
                 False, "manual-key-required", STATE_MESSAGES["manual-key-required"])
 
+        org_id = config.get("root_org_id") or ""
+        if not org_id:
+            self._sync_status_message(config, "org-id-required")
+            return self._write_local_status(
+                False, "org-id-required", STATE_MESSAGES["org-id-required"])
+
         try:
-            new_key = self._ensure_key()
+            new_key = self._ensure_key(org_id)
             if not self._validate_key(new_key):
                 raise RuntimeError("newly created key failed validation against /service_accounts/me")
         except Exception as exc:                                # noqa: BLE001
