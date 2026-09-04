@@ -34,8 +34,8 @@
       {
         "source": "$AW_APP_DATA/provision",
         "target": "/var/lib/aw-provision",
-        "mode": "ro",
-        "reason": "Read-only view of the provisioner sidecar's status.json, served publicly at /aw-provision/status.json (see container/nginx/nginx.conf) so contributes.doctor can see provisioning state without reaching into another container."
+        "mode": "rw",
+        "reason": "Shares the provisioner sidecar's status.json so nginx can serve it at /aw-provision/status.json for contributes.doctor, without reaching into another container. nginx itself never writes here — mode is rw only because runtime.py's loader rejects any $AW_APP_DATA-sourced volume mounted read-only, regardless of which container actually writes to it."
       }
     ],
     "sidecars": [

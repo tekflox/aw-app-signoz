@@ -69,10 +69,13 @@ def test_provisioner_sidecar_has_a_writable_status_volume(provisioner_sidecar):
     assert volume["mode"] == "rw"
 
 
-def test_nginx_container_mounts_the_same_status_volume_readonly(manifest):
+def test_nginx_container_mounts_the_same_status_volume_read_write(manifest):
+    # Not because nginx writes to it — runtime.py's loader hard-rejects ANY
+    # $AW_APP_DATA-sourced volume mounted "ro", full stop (confirmed against
+    # a real install: "$AW_APP_DATA volume must be read-write").
     volumes = manifest["runtime"]["volumes"]
     (status_volume,) = [v for v in volumes if v["source"] == "$AW_APP_DATA/provision"]
-    assert status_volume["mode"] == "ro"
+    assert status_volume["mode"] == "rw"
 
 
 def test_contributes_doctor_points_at_the_status_route(manifest):
