@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "signoz",
   "name": "SigNoz",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Self-hosted observability for this workspace \u2014 traces, metrics and logs in one dashboard, with an OTLP endpoint any instrumented service can send to. Your own instance, your own data, no shared central collector.",
   "icon": "activity",
   "tier": "container",
@@ -166,7 +166,7 @@
             "source": "$AW_APP_DATA/provision",
             "target": "/var/lib/aw-provision",
             "mode": "rw",
-            "reason": "Where this sidecar publishes its own status.json (state machine: starting / workspace-unreachable / manual-key-required / provision-failed / ready / provisioned) — read read-only by the nginx sidecar and exposed at /aw-provision/status.json for contributes.doctor. Never holds the SigNoz API key itself; only human-readable state."
+            "reason": "Where this sidecar publishes its own status.json (state machine: starting / workspace-unreachable / manual-key-required / provision-failed / ready / provisioned) \u2014 read read-only by the nginx sidecar and exposed at /aw-provision/status.json for contributes.doctor. Never holds the SigNoz API key itself; only human-readable state."
           }
         ]
       }
