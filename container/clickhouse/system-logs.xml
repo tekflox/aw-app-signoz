@@ -1,0 +1,72 @@
+<clickhouse>
+    <!--
+      ClickHouse's own self-instrumentation, bounded.
+
+      THE MEASUREMENT (2026-09-12): this workspace's ClickHouse held 19.83 GiB
+      of system.* tables and 98 MiB of the telemetry SigNoz exists to store —
+      the database's notes about itself were 200x the data. system.trace_log
+      alone was 13.65 GiB across 781,359,938 rows, and it had grown large
+      enough that `SELECT count() FROM system.trace_log` died with
+      MEMORY_LIMIT_EXCEEDED: the table could no longer be queried at all.
+
+      It grew without bound because none of these tables ship a TTL. The app's
+      own retention setting (AW_SIGNOZ_RETENTION_DAYS, applied by
+      entrypoint.sh) governs signoz_traces/signoz_logs/signoz_metrics — the
+      data this app ingests. It never reached the ones ClickHouse writes about
+      itself, and nothing else did either.
+
+      WHY CONFIG RATHER THAN THE ENTRYPOINT'S ALTER: the SigNoz tables are
+      created by otelcol's migrations, so config cannot declare them and an
+      ALTER after the fact is the only hook. These tables are the opposite —
+      ClickHouse creates them FROM this config, so declaring their lifetime
+      here is the native mechanism and applies from the first row written,
+      with no window in which an unbounded table exists.
+
+      Disabled vs kept is a judgement about what is worth its bytes on a
+      single-node, one-workspace deployment, not a blanket cull:
+    -->
+
+    <!--
+      trace_log: the query profiler — stack samples, several per query. It is
+      for diagnosing ClickHouse's own performance, which is not a thing anyone
+      does here, and it was 69% of the total on its own.
+    -->
+    <trace_log remove="1"/>
+
+    <!--
+      text_log: ClickHouse's log lines, written into a table. The same lines
+      already go to the container log, where they are actually read. This is a
+      duplicate that costs gigabytes.
+    -->
+    <text_log remove="1"/>
+
+    <!--
+      asynchronous_metric_log: one row per background metric per second —
+      257,334,058 rows for 231 MiB. The same values are visible live in
+      system.asynchronous_metrics; the history is what nobody consults.
+    -->
+    <asynchronous_metric_log remove="1"/>
+
+    <!--
+      The three below are KEPT, because they are what you actually want when
+      ClickHouse misbehaves: what ran (query_log), what the server was doing
+      (metric_log), and what the merges did (part_log). Three days is long
+      enough to investigate an incident and short enough to stay bounded.
+
+      ttl_only_drop_parts matches what entrypoint.sh already sets on the
+      SigNoz tables: expired parts are DROPPED whole rather than rewritten
+      row-by-row, so expiry costs almost nothing.
+    -->
+    <query_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+        <ttl_only_drop_parts>1</ttl_only_drop_parts>
+    </query_log>
+    <metric_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+        <ttl_only_drop_parts>1</ttl_only_drop_parts>
+    </metric_log>
+    <part_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+        <ttl_only_drop_parts>1</ttl_only_drop_parts>
+    </part_log>
+</clickhouse>

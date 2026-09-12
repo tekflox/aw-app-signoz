@@ -89,6 +89,12 @@
             "target": "/etc/clickhouse-server/config.d/memory.xml",
             "mode": "ro",
             "reason": "Caps ClickHouse's own memory usage against this sidecar's resources.mem_mb, ported from the monolith's aw-signoz setup."
+          },
+          {
+            "source": "container/clickhouse/system-logs.xml",
+            "target": "/etc/clickhouse-server/config.d/system-logs.xml",
+            "mode": "ro",
+            "reason": "Bounds ClickHouse's own system.* log tables, which ship with NO TTL and are not covered by this app's retention setting (that only reaches the tables it ingests into). Measured 2026-09-12: 19.83 GiB of system.* against 98 MiB of actual telemetry, with system.trace_log grown past the point where it could be queried at all."
           }
         ]
       },
