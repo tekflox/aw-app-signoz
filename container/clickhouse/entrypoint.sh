@@ -75,4 +75,44 @@ apply_ttl signoz_metrics.time_series_v4_1day   "toDateTime(unix_milli / 1000) + 
 apply_ttl signoz_metrics.time_series_v4_1week  "toDateTime(unix_milli / 1000) + toIntervalDay($RETENTION_DAYS)"
 apply_ttl signoz_metrics.exp_hist              "toDateTime(unix_milli / 1000) + toIntervalDay($RETENTION_DAYS)"
 
+# --- ClickHouse's own log tables, on an EXISTING install --------------------
+#
+# config.d/system-logs.xml governs these, and it is enough on a fresh install:
+# the disabled ones are never created and the kept ones are created with their
+# TTL. It is NOT enough on an install that already has them, because config
+# decides how a table is CREATED and these were created long ago.
+#
+# Measured on the workspace this shipped to (2026-09-12): after the update the
+# three disabled tables stopped receiving rows — verified, counts identical
+# two minutes apart — but still held 1.1M rows between them, and part_log kept
+# no TTL at all. "New installs are fine" is not the same as "this is fixed".
+#
+# So the config declares the intent and this makes an existing install match
+# it. Both halves stay in step by construction: the lists below are the same
+# tables system-logs.xml names, and the test asserts they do not drift.
+
+# A disabled table will never be written to again, so what it holds is dead
+# weight. DROP rather than TRUNCATE: a truncated table is still a table
+# ClickHouse attaches at every start, and if the logger is ever re-enabled it
+# recreates it anyway.
+for t in trace_log text_log asynchronous_metric_log; do
+    if clickhouse-client -q "DROP TABLE IF EXISTS system.$t SYNC" 2>/tmp/aw_drop_err; then
+        echo "aw-entrypoint: dropped disabled system.$t"
+    else
+        echo "aw-entrypoint: could not drop system.$t: $(cat /tmp/aw_drop_err)" >&2
+    fi
+done
+
+# The kept ones get the same 3 days the config declares. MODIFY TTL on an
+# existing table is the only way to reach one that already exists — the same
+# reason every apply_ttl above exists. No ON CLUSTER: system tables are local
+# to a node, unlike the SigNoz tables above.
+for t in query_log metric_log part_log; do
+    if clickhouse-client -q "ALTER TABLE system.$t MODIFY TTL event_date + toIntervalDay(3)" 2>/tmp/aw_ttl_err; then
+        echo "aw-entrypoint: TTL set on system.$t -> 3 days"
+    else
+        echo "aw-entrypoint: could not set TTL on system.$t: $(cat /tmp/aw_ttl_err)" >&2
+    fi
+done
+
 wait "$CH_PID"

@@ -77,6 +77,17 @@ def main():
         check(f"{name} drops whole parts", drop is not None and drop.text == "1",
               "without this, expiry rewrites every part row by row")
 
+    # The entrypoint heals an install that already HAS these tables, which
+    # config alone cannot reach. Two lists saying the same thing drift the
+    # moment one is edited — so they are compared, not trusted.
+    entry = (ROOT / "container" / "clickhouse" / "entrypoint.sh").read_text()
+    dropped = _shell_list(entry, "for t in", "; do\n    if clickhouse-client -q \"DROP")
+    ttl_ed = _shell_list(entry, "for t in", "; do\n    if clickhouse-client -q \"ALTER")
+    check("the entrypoint drops exactly the disabled tables",
+          dropped == DISABLED, f"config says {sorted(DISABLED)}, entrypoint drops {sorted(dropped)}")
+    check("the entrypoint TTLs exactly the kept tables",
+          ttl_ed == KEPT, f"config says {sorted(KEPT)}, entrypoint alters {sorted(ttl_ed)}")
+
     check("every element is accounted for",
           set(by_name) == DISABLED | KEPT,
           f"unexpected: {sorted(set(by_name) - (DISABLED | KEPT))}")
@@ -99,6 +110,14 @@ def main():
 
     print(f"\n{len(failures)} failed")
     return 1 if failures else 0
+
+
+def _shell_list(text, prefix, suffix):
+    """The table names in a `for t in a b c; do if ... <suffix>` loop."""
+    import re
+    pat = re.escape(prefix) + r"\s+([^;]+)" + re.escape(suffix)
+    m = re.search(pat, text)
+    return set(m.group(1).split()) if m else set()
 
 
 def _services(manifest):
