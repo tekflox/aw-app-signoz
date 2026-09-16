@@ -81,7 +81,7 @@ aw-workspace ALSO writes the key to `<AW_WORKSPACE_HOME>/.env` (default
 `~/.aw-workspace/.env`) on every generate/regenerate:
 
 ```
-AW_WORKSPACE_API_KEY=6045f44044391d20e1fa8fc75c88a619588ada22a055e95fb6f5128f15a1e378
+AW_WORKSPACE_API_KEY=example-api-key
 ```
 
 Read it fresh on every call (not once at process start) so a regenerated
